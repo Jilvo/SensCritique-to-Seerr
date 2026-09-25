@@ -1,0 +1,35 @@
+[project]
+name = "sc-to-seerr"
+version = "0.1.0"
+description = "Vérifie si les envies de films SensCritique sont disponibles ou demandées dans Seerr"
+authors = [
+    {name = "Jilvo",email = ""}
+]
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "httpx (>=0.28.1,<0.29.0)",
+    "click (>=8.5.0,<9.0.0)",
+    "rich (>=15.0.0,<16.0.0)",
+    "pydantic-settings (>=2.15.0,<3.0.0)"
+]
+
+[project.scripts]
+sc-to-seerr = "sc_to_seerr.cli:main"
+
+[tool.poetry]
+packages = [{ include = "sc_to_seerr", from = "src" }]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^9.1.1"
+pytest-asyncio = "^1.4.0"
+respx = "^0.23.1"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+

@@ -1,0 +1,16 @@
+TODO.md
+
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Sorties
+logs/
+output/
+data/
+*.log
