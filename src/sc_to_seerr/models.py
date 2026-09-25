@@ -4,9 +4,21 @@ from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum
 
 
+class MediaType(StrEnum):
+    MOVIE = "movie"
+    TV = "tv"
+
+
+class Source(StrEnum):
+    """Collection SensCritique d'où vient l'œuvre."""
+
+    WISH = "envie"
+    SEEN = "vu"
+
+
 @dataclass(frozen=True, slots=True)
 class Wish:
-    """Une envie de film sur SensCritique."""
+    """Une œuvre (film ou série) d'une collection SensCritique : envie ou vue."""
 
     sc_id: int
     title: str
@@ -14,6 +26,7 @@ class Wish:
     year: int | None
     release_years: frozenset[int] = field(default_factory=frozenset)
     url: str | None = None
+    source: Source = Source.WISH
 
     @property
     def sc_url(self) -> str | None:
@@ -21,8 +34,8 @@ class Wish:
 
 
 @dataclass(frozen=True, slots=True)
-class SeerrMovie:
-    """Un résultat de recherche Seerr (film TMDB)."""
+class SeerrMedia:
+    """Un résultat de recherche Seerr (film ou série TMDB)."""
 
     tmdb_id: int
     title: str

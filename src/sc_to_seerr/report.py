@@ -23,6 +23,7 @@ STATUS_STYLE: dict[WishStatus, tuple[str, str]] = {
 
 CSV_FIELDS = [
     "statut",
+    "source",
     "titre",
     "titre_original",
     "annee",
@@ -40,9 +41,9 @@ def _label(status: WishStatus) -> str:
     return f"[{style}]{icon} {status.value}[/{style}]"
 
 
-def print_summary(console: Console, results: list[WishResult]) -> None:
+def print_summary(console: Console, results: list[WishResult], label: str = "films") -> None:
     counts = Counter(r.status for r in results)
-    table = Table(title=f"Résumé — {len(results)} envies de films", show_header=False, min_width=40)
+    table = Table(title=f"Résumé — {len(results)} {label}", show_header=False, min_width=40)
     table.add_column("Statut")
     table.add_column("Nombre", justify="right")
     for status in WishStatus:
@@ -58,7 +59,10 @@ def print_details(
     if not rows:
         return
     table = Table(title=f"{title} ({len(rows)})")
+    show_source = len({r.wish.source for r in rows}) > 1
     table.add_column("Statut", no_wrap=True)
+    if show_source:
+        table.add_column("Source")
     table.add_column("Titre SensCritique")
     table.add_column("Année", justify="right")
     table.add_column("Correspondance Seerr")
@@ -73,7 +77,10 @@ def print_details(
         seerr = f"{escape(r.seerr_title)} ({r.seerr_year or '?'})" if r.seerr_title else ""
         if r.match == MatchMethod.FUZZY:
             seerr += " [yellow]~[/yellow]"
-        table.add_row(_label(r.status), wish_title, str(r.wish.year or ""), seerr, str(r.tmdb_id or ""))
+        cells = [_label(r.status), wish_title, str(r.wish.year or ""), seerr, str(r.tmdb_id or "")]
+        if show_source:
+            cells.insert(1, r.wish.source.value)
+        table.add_row(*cells)
     console.print(table)
 
 
@@ -87,6 +94,7 @@ def write_csv(path: Path, results: list[WishResult]) -> None:
             writer.writerow(
                 {
                     "statut": r.status.value,
+                    "source": r.wish.source.value,
                     "titre": r.wish.title,
                     "titre_original": r.wish.original_title or "",
                     "annee": r.wish.year or "",

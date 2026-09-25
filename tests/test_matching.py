@@ -1,5 +1,5 @@
 from sc_to_seerr.matching import find_match, normalize_title, search_queries
-from sc_to_seerr.models import MatchMethod, SeerrMovie, Wish
+from sc_to_seerr.models import MatchMethod, SeerrMedia, Wish
 
 
 def wish(title, original=None, year=None, years=()):
@@ -7,7 +7,7 @@ def wish(title, original=None, year=None, years=()):
 
 
 def movie(tmdb_id, title, original=None, year=None):
-    return SeerrMovie(tmdb_id=tmdb_id, title=title, original_title=original, year=year)
+    return SeerrMedia(tmdb_id=tmdb_id, title=title, original_title=original, year=year)
 
 
 def test_normalize_title():

@@ -3,7 +3,7 @@ name = "sc-to-seerr"
 version = "0.1.0"
 description = "Vérifie si les envies de films SensCritique sont disponibles ou demandées dans Seerr"
 authors = [
-    {name = "Jilvo",email = ""}
+    {name = "Jilvo",email = "dm-me@gmail.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.14"

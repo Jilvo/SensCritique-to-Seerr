@@ -1,8 +1,8 @@
 # SensCritique → Seerr
 
-Vérifie si les envies de films d'un compte [SensCritique](https://www.senscritique.com) sont disponibles, en cours ou demandées dans [Seerr](https://github.com/seerr-team/seerr) (ex-Overseerr).
+Vérifie si les films (envies et vus) et les séries d'un compte [SensCritique](https://www.senscritique.com) sont disponibles, en cours ou demandés dans [Seerr](https://github.com/seerr-team/seerr) (ex-Overseerr), et permet de les demander.
 
-`check` est en lecture seule. Les commandes `random` et `request-all` créent des demandes dans Seerr (confirmation demandée, `--dry-run` pour simuler).
+`check` et `series list` sont en lecture seule. `random`, `request-all` et `series request` créent des demandes dans Seerr (confirmation demandée, `--dry-run` pour simuler).
 
 ## Installation
 
@@ -25,7 +25,11 @@ poetry run sc-to-seerr check --show all      # détaille tous les statuts
 poetry run sc-to-seerr check --show absent --show pending
 poetry run sc-to-seerr check --refresh-cache # refait les correspondances automatiques
 poetry run sc-to-seerr -v check              # logs détaillés en console
+poetry run sc-to-seerr check --source seen   # films vus (« Achevés ») au lieu des envies
+poetry run sc-to-seerr check --source all    # envies + vus
 ```
+
+`--source wish|seen|all` existe aussi pour `random`, `request-all` et `series list`. Les exports d'une autre source que les envies ont un suffixe (`wishlist_status_seen.csv`, `wishlist_status_all.csv`).
 
 ### Faire des demandes
 
@@ -44,12 +48,29 @@ poetry run sc-to-seerr request-all --limit 20 --random  # 20 au hasard
 
 Options communes : `--exact-only` (ignore les correspondances approchées), `--dry-run`, `-y/--yes` (sans confirmation, pour un usage planifié).
 
+### Séries
+
+Les séries ont leurs propres commandes. Les demandes se font une par une à partir de l'**ID TMDB** affiché par `series list` :
+
+```bash
+poetry run sc-to-seerr series list                       # statut des séries en envie + ID TMDB
+poetry run sc-to-seerr series list --show all
+poetry run sc-to-seerr series request 136315             # toutes les saisons manquantes
+poetry run sc-to-seerr series request 136315 --seasons 1,2
+poetry run sc-to-seerr series request 136315 --dry-run
+```
+
+La fiche de la série affiche l'état de chaque saison ; les saisons déjà disponibles, en cours ou demandées ne sont jamais redemandées (la saison 0, épisodes spéciaux, est ignorée).
+
 ### Cache
 
 ```bash
 poetry run sc-to-seerr rebuild-cache                # repart de zéro (corrections manuelles comprises)
 poetry run sc-to-seerr rebuild-cache --keep-manual  # garde les corrections manuelles
+poetry run sc-to-seerr rebuild-cache --series       # cache des séries
 ```
+
+`rebuild-cache` traite par défaut envies et vus (`--source all`), pour que le cache serve aux deux.
 
 Sorties :
 - console : détail des statuts choisis (`--show`, par défaut absents, refusés et non trouvés) + résumé ;
@@ -60,11 +81,11 @@ Statuts : `disponible`, `partiellement disponible`, `en cours` (demande approuv�
 
 ## Fonctionnement
 
-1. **SensCritique** : les envies de films sont lues via l'API GraphQL du site (pas d'API publique officielle).
+1. **SensCritique** : les collections (envies, vus ; films, séries) sont lues via l'API GraphQL du site (pas d'API publique officielle).
 2. **Rapprochement** : SensCritique ne fournit pas d'identifiant TMDB/IMDb. Chaque envie est cherchée dans Seerr par titre original puis français (puis sans sous-titre), et acceptée si le titre correspond (exact ou très proche) et que l'année est compatible.
 3. **Statut** : tous les médias et demandes de Seerr sont récupérés en quelques appels, puis croisés avec les identifiants TMDB.
 
-Les correspondances sont gardées dans `CACHE_FILE` (`data/matches.json`) : seule la première exécution lance une recherche par envie (~2-3 min pour 3000 films), les suivantes prennent quelques secondes.
+Les correspondances sont gardées dans `CACHE_FILE` (`data/matches.json`, séries : `CACHE_FILE_TV`) : seule la première exécution lance une recherche par envie (~2-3 min pour 3000 films), les suivantes prennent quelques secondes.
 
 ### Corriger une correspondance
 

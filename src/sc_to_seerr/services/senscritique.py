@@ -1,4 +1,4 @@
-"""Service SensCritique : lecture des envies via l'API GraphQL du site.
+"""Service SensCritique : lecture des collections (envies, vus) via l'API GraphQL du site.
 
 SensCritique n'a pas d'API publique officielle ; on utilise l'endpoint GraphQL
 (Apollo) du site, sans authentification, sur un profil public.
@@ -8,12 +8,15 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
-from sc_to_seerr.models import Wish
+from sc_to_seerr.models import MediaType, Source, Wish
 from sc_to_seerr.services.base import BaseService, ServiceError
 
 logger = logging.getLogger(__name__)
 
-WISHLIST_QUERY = """
+UNIVERSES = {MediaType.MOVIE: "movie", MediaType.TV: "tvShow"}
+ACTIONS = {Source.WISH: "WISH", Source.SEEN: "DONE"}  # "DONE" = "Achevés" sur le site
+
+COLLECTION_QUERY = """
 query UserCollection(
   $username: String!
   $action: ProductAction
@@ -55,7 +58,7 @@ def _year(date: str | None) -> int | None:
     return None
 
 
-def parse_product(product: dict[str, Any]) -> Wish:
+def parse_product(product: dict[str, Any], source: Source = Source.WISH) -> Wish:
     year = product.get("yearOfProduction")
     release_years = {
         y
@@ -75,6 +78,7 @@ def parse_product(product: dict[str, Any]) -> Wish:
         year=year or min(release_years, default=None),
         release_years=frozenset(release_years),
         url=product.get("url"),
+        source=source,
     )
 
 
@@ -86,14 +90,16 @@ class SensCritiqueService(BaseService):
         self.username = username
         self.page_size = page_size
 
-    async def _fetch_page(self, offset: int, limit: int | None = None) -> tuple[int, list[dict[str, Any]]]:
+    async def _fetch_page(
+        self, media_type: MediaType, source: Source, offset: int, limit: int | None = None
+    ) -> tuple[int, list[dict[str, Any]]]:
         payload = {
             "operationName": "UserCollection",
-            "query": WISHLIST_QUERY,
+            "query": COLLECTION_QUERY,
             "variables": {
                 "username": self.username,
-                "action": "WISH",
-                "universe": "movie",
+                "action": ACTIONS[source],
+                "universe": UNIVERSES[media_type],
                 "limit": limit or self.page_size,
                 "offset": offset,
                 "order": "LAST_ACTION_DESC",
@@ -109,27 +115,30 @@ class SensCritiqueService(BaseService):
         collection = user["collection"]
         return collection["total"], collection["products"] or []
 
-    async def count_movie_wishes(self) -> int:
-        total, _ = await self._fetch_page(0, limit=1)
+    async def count(self, media_type: MediaType, source: Source) -> int:
+        total, _ = await self._fetch_page(media_type, source, 0, limit=1)
         return total
 
-    async def iter_movie_wishes(self) -> AsyncIterator[Wish]:
-        """Parcourt toutes les envies de films, page par page."""
+    async def iter_collection(self, media_type: MediaType, source: Source) -> AsyncIterator[Wish]:
+        """Parcourt une collection (envies ou vus, films ou séries), page par page."""
         offset = 0
         while True:
-            total, products = await self._fetch_page(offset)
-            logger.debug("SensCritique : page offset=%s, %s films (total %s)", offset, len(products), total)
+            total, products = await self._fetch_page(media_type, source, offset)
+            logger.debug(
+                "SensCritique : %s/%s offset=%s, %s œuvres (total %s)",
+                media_type, source, offset, len(products), total,
+            )
             for product in products:
-                yield parse_product(product)
+                yield parse_product(product, source)
             offset += len(products)
             if not products or offset >= total:
                 break
 
-    async def get_movie_wishes(self, limit: int | None = None) -> list[Wish]:
-        wishes: list[Wish] = []
-        async for wish in self.iter_movie_wishes():
-            wishes.append(wish)
-            if limit is not None and len(wishes) >= limit:
+    async def get_collection(self, media_type: MediaType, source: Source, limit: int | None = None) -> list[Wish]:
+        items: list[Wish] = []
+        async for item in self.iter_collection(media_type, source):
+            items.append(item)
+            if limit is not None and len(items) >= limit:
                 break
-        logger.info("SensCritique : %s envies de films récupérées pour %s", len(wishes), self.username)
-        return wishes
+        logger.info("SensCritique : %s %s (%s) récupérés pour %s", len(items), media_type, source, self.username)
+        return items

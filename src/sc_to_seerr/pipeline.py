@@ -1,4 +1,4 @@
-"""Orchestration : envies SensCritique -> correspondance TMDB -> statut Seerr."""
+"""Orchestration : collection SensCritique -> correspondance TMDB -> statut Seerr."""
 
 import asyncio
 import logging
@@ -10,7 +10,9 @@ from sc_to_seerr.matching import find_match, search_queries
 from sc_to_seerr.models import (
     MatchMethod,
     MediaStatus,
+    MediaType,
     RequestStatus,
+    Source,
     Wish,
     WishResult,
     WishStatus,
@@ -49,7 +51,9 @@ def classify(media_status: int | None, request_statuses: list[int]) -> WishStatu
 
 @dataclass(slots=True)
 class PipelineOptions:
-    limit: int | None = None
+    media_type: MediaType = MediaType.MOVIE
+    sources: tuple[Source, ...] = (Source.WISH,)
+    limit: int | None = None  # par source
     concurrency: int = 5
     year_tolerance: int = 1
     search_pages: int = 3
@@ -76,15 +80,15 @@ class Pipeline:
         queries = search_queries(wish)
         for page in range(1, self.options.search_pages + 1):
             for query in list(queries):
-                result = await self.seerr.search_movies(query, page)
+                result = await self.seerr.search(query, self.options.media_type, page)
                 if page >= result.total_pages:
                     queries.remove(query)
-                movie, method = find_match(wish, result.movies, self.options.year_tolerance)
-                if movie:
+                media, method = find_match(wish, result.results, self.options.year_tolerance)
+                if media:
                     logger.debug(
-                        "Correspondance %s : %r -> %s (%r, page %s)", method, wish.title, movie.tmdb_id, query, page
+                        "Correspondance %s : %r -> %s (%r, page %s)", method, wish.title, media.tmdb_id, query, page
                     )
-                    return CachedMatch(movie.tmdb_id, movie.title, movie.year, method.value)
+                    return CachedMatch(media.tmdb_id, media.title, media.year, method.value)
             if not queries:
                 break
         return None
@@ -108,12 +112,24 @@ class Pipeline:
             )
         return match
 
+    async def _fetch_wishes(self) -> list[Wish]:
+        """Œuvres des collections demandées, sans doublon (une œuvre peut être vue et en envie)."""
+        collections = await asyncio.gather(
+            *(self.sc.get_collection(self.options.media_type, s, self.options.limit) for s in self.options.sources)
+        )
+        unique: dict[int, Wish] = {}
+        for items in collections:
+            for item in items:
+                unique.setdefault(item.sc_id, item)
+        return list(unique.values())
+
     async def run(self) -> list[WishResult]:
         self._progress("SensCritique et statuts Seerr", 0, 0)
+        media_type = self.options.media_type
         wishes, media_statuses, request_statuses = await asyncio.gather(
-            self.sc.get_movie_wishes(limit=self.options.limit),
-            self.seerr.get_movie_media_statuses(),
-            self.seerr.get_movie_request_statuses(),
+            self._fetch_wishes(),
+            self.seerr.get_media_statuses(media_type),
+            self.seerr.get_request_statuses(media_type),
         )
 
         semaphore = asyncio.Semaphore(self.options.concurrency)

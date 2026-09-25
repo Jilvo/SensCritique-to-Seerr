@@ -33,7 +33,9 @@ class Settings(BaseSettings):
     log_file: Path = Path("logs/sc_to_seerr.log")
     log_level: str = "INFO"
     csv_output: Path = Path("output/wishlist_status.csv")
+    csv_output_tv: Path = Path("output/series_status.csv")
     cache_file: Path = Path("data/matches.json")
+    cache_file_tv: Path = Path("data/matches_tv.json")
 
     @property
     def seerr_api_base(self) -> str:

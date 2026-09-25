@@ -40,6 +40,20 @@ async def request_movie(seerr: SeerrService, result: WishResult) -> RequestResul
     return RequestResult(result, RequestOutcome.CREATED)
 
 
+async def request_series(seerr: SeerrService, tmdb_id: int, seasons: list[int]) -> tuple[RequestOutcome, str]:
+    label = f"série tmdb {tmdb_id}, saisons {seasons}"
+    try:
+        response = await seerr.request_tv(tmdb_id, seasons)
+    except ServiceError as exc:
+        if exc.status_code == 409:
+            logger.info("Demande déjà existante : %s", label)
+            return RequestOutcome.ALREADY, ""
+        logger.error("Demande impossible : %s : %s", label, exc)
+        return RequestOutcome.FAILED, str(exc)
+    logger.info("Demande créée : %s (demande n°%s, statut %s)", label, response.get("id"), response.get("status"))
+    return RequestOutcome.CREATED, ""
+
+
 async def request_movies(
     seerr: SeerrService,
     results: list[WishResult],

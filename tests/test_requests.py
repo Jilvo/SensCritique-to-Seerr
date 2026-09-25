@@ -7,9 +7,9 @@ from click.testing import CliRunner
 
 from sc_to_seerr import cli
 from sc_to_seerr.cache import CachedMatch, MatchCache
-from sc_to_seerr.models import MatchMethod, Wish, WishResult, WishStatus
+from sc_to_seerr.models import MatchMethod, MediaType, Source, Wish, WishResult, WishStatus
 from sc_to_seerr.requester import RequestOutcome, RequestResult, request_movies
-from sc_to_seerr.services.seerr import SeerrService
+from sc_to_seerr.services.seerr import SeerrService, TvDetails
 
 SEERR_API = "https://seerr.example/api/v1"
 
@@ -70,6 +70,8 @@ def test_cache_reset_drops_manual_entries(tmp_path):
 
 # --- CLI ---------------------------------------------------------------------
 
+pipeline_calls: list[dict] = []
+
 RESULTS = [
     result(1),
     result(2, WishStatus.AVAILABLE),
@@ -87,8 +89,9 @@ def fake_cli(monkeypatch, tmp_path):
     monkeypatch.setenv("LOG_FILE", str(tmp_path / "test.log"))
     cli.get_settings.cache_clear()
     sent: list[int] = []
+    pipeline_calls.clear()
 
-    monkeypatch.setattr(cli, "_run_pipeline", lambda settings, **kw: list(RESULTS))
+    monkeypatch.setattr(cli, "_run_pipeline", lambda settings, **kw: pipeline_calls.append(kw) or list(RESULTS))
 
     async def fake_request_movie(seerr, r):
         sent.append(r.tmdb_id)
@@ -141,7 +144,7 @@ def test_random_quit_and_reroll(fake_cli):
 
 def test_random_dry_run(fake_cli):
     out = invoke("random", "--dry-run")
-    assert "Tirage parmi 3 envies" in out.output
+    assert "Tirage parmi 3 films (envie)" in out.output
     assert fake_cli == []
 
 
@@ -154,3 +157,67 @@ def test_rebuild_cache_asks_confirmation(fake_cli, monkeypatch):
     invoke("rebuild-cache", "--yes")
     invoke("rebuild-cache", "--keep-manual")
     assert modes == [cli.CacheMode.RESET, cli.CacheMode.REFRESH]
+
+
+def test_source_option_is_forwarded(fake_cli):
+    invoke("request-all", "--dry-run", "--source", "seen")
+    invoke("random", "--dry-run", "--source", "all")
+    invoke("random", "--dry-run")
+    assert [c["sources"] for c in pipeline_calls] == [
+        (Source.SEEN,), (Source.WISH, Source.SEEN), (Source.WISH,)
+    ]
+
+
+# --- séries ------------------------------------------------------------------
+
+SHOW = TvDetails(
+    tmdb_id=42, name="Série", original_name=None, year=2020, seasons=[1, 2, 3],
+    media_status=4, season_statuses={1: 5}, requested_seasons=set(),
+)
+
+
+@pytest.fixture
+def fake_series(fake_cli, monkeypatch):
+    sent: list[tuple[int, list[int]]] = []
+
+    async def fake_get_tv(self, tmdb_id):
+        return SHOW
+
+    async def fake_request_series(seerr, tmdb_id, seasons):
+        sent.append((tmdb_id, seasons))
+        return RequestOutcome.CREATED, ""
+
+    monkeypatch.setattr(SeerrService, "get_tv", fake_get_tv)
+    monkeypatch.setattr(cli, "request_series", fake_request_series)
+    return sent
+
+
+def test_series_request_missing_seasons_only(fake_series):
+    out = invoke("series", "request", "42", "--yes")
+    assert fake_series == [(42, [2, 3])]
+    assert "Saison 1 : disponible" in out.output
+
+
+def test_series_request_explicit_seasons(fake_series):
+    out = invoke("series", "request", "42", "--seasons", "1,3", "--yes")
+    assert "ignorées : saison(s) 1" in out.output
+    assert fake_series == [(42, [3])]
+
+
+def test_series_request_dry_run_and_confirmation(fake_series):
+    invoke("series", "request", "42", "--dry-run")
+    assert invoke("series", "request", "42", input="n\n").exit_code == 1
+    assert fake_series == []
+
+
+def test_series_request_rejects_unknown_season(fake_series):
+    out = CliRunner().invoke(cli.main, ["series", "request", "42", "--seasons", "7", "--yes"])
+    assert out.exit_code == 2
+    assert "inexistante" in out.output
+    assert fake_series == []
+
+
+def test_series_list_uses_tv_pipeline(fake_cli, monkeypatch):
+    monkeypatch.setattr(cli, "_export", lambda *a, **kw: None)
+    invoke("series", "list")
+    assert pipeline_calls[-1]["media_type"] is MediaType.TV

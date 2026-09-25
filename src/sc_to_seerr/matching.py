@@ -4,7 +4,7 @@ import re
 import unicodedata
 from difflib import SequenceMatcher
 
-from sc_to_seerr.models import MatchMethod, SeerrMovie, Wish
+from sc_to_seerr.models import MatchMethod, SeerrMedia, Wish
 
 FUZZY_THRESHOLD = 0.85
 
@@ -22,7 +22,7 @@ def normalize_title(title: str) -> str:
     return _ARTICLES.sub("", text)
 
 
-def year_distance(wish: Wish, movie: SeerrMovie) -> int | None:
+def year_distance(wish: Wish, movie: SeerrMedia) -> int | None:
     """Plus petit écart entre l'année TMDB et les années connues côté SensCritique."""
     years = wish.release_years or ({wish.year} if wish.year else set())
     if movie.year is None or not years:
@@ -73,8 +73,8 @@ def _similarity(wish_titles: set[str], movie_titles: set[str]) -> float:
 
 
 def find_match(
-    wish: Wish, candidates: list[SeerrMovie], year_tolerance: int = 1
-) -> tuple[SeerrMovie | None, MatchMethod]:
+    wish: Wish, candidates: list[SeerrMedia], year_tolerance: int = 1
+) -> tuple[SeerrMedia | None, MatchMethod]:
     """Choisit le meilleur candidat, ou `None` si aucun n'est assez sûr.
 
     - exact : titre (FR ou original) identique après normalisation, année compatible ;
@@ -84,7 +84,7 @@ def find_match(
     n'est acceptée que pour un titre identique.
     """
     wish_titles = {normalize_title(t) for t in (wish.title, wish.original_title) if t}
-    scored: list[tuple[float, int, SeerrMovie]] = []
+    scored: list[tuple[float, int, SeerrMedia]] = []
     for movie in candidates:
         movie_titles = {normalize_title(t) for t in (movie.title, movie.original_title) if t}
         similarity = _similarity(wish_titles, movie_titles)
